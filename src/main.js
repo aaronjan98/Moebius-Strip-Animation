@@ -1,4 +1,4 @@
-// src/main.js — with trail persistence + reset on loop changes
+// src/main.js — add surface integration
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import GUI from 'lil-gui';
@@ -7,6 +7,7 @@ import state from './state.js';
 import { LoopManager } from './loop.js';
 import { PairManager } from './pair.js';
 import { LiftManager } from './lift.js';
+import { SurfaceManager } from './surface.js';   // <-- NEW
 
 // ---------- Scene / Camera / Renderer ----------
 const scene = new THREE.Scene();
@@ -63,6 +64,9 @@ const lift = new LiftManager({
   trailMinStep: state.trailMinStep,
 });
 
+// NEW: transparent surface manager
+const surface = new SurfaceManager({ scene });
+
 // ---------- GUI ----------
 const gui = new GUI({ title: 'Controls' });
 
@@ -74,30 +78,68 @@ const drawingCtrl = fLoop.add(state, 'drawingMode')
 
 fLoop.add({
   closeAndSmooth: () => {
-    // reset old trail when building a fresh loop
+    // Reset old trail & surface when building a fresh loop
     lift.clearTrail();
+    surface.useLoop(null);
+    surface.setVisible(false);
+
     loops.buildSmoothClosedCurve();
     drawingCtrl.setValue(false);
-    pair.useLoop(loops.getCurve());
-    lift.setPlaying(state.playing); // show/hide lifted marker based on Play
+
+    const curve = loops.getCurve();
+    pair.useLoop(curve);
+    surface.useLoop(curve);
+
+    lift.setPlaying(state.playing);
+
+    // If user had "Show Surface" on, rebuild it for the new loop
+    if (state.showSurface) {
+      surface.rebuild({
+        resA: state.resA,
+        resB: state.resB,
+        opacity: state.surfaceOpacity,
+        wireframe: state.wireframe,
+      });
+      surface.setVisible(true);
+    }
   }
 }, 'closeAndSmooth').name('Close & Smooth');
 
 fLoop.add({
   autoGenerateLoop: () => {
     drawingCtrl.setValue(false);
-    // reset trail when generating a new loop
+
+    // Reset trail & surface before generating a new loop
     lift.clearTrail();
+    surface.useLoop(null);
+    surface.setVisible(false);
+
     loops.autoGenerateLoop();
-    pair.useLoop(loops.getCurve());
+
+    const curve = loops.getCurve();
+    pair.useLoop(curve);
+    surface.useLoop(curve);
+
     lift.setPlaying(state.playing);
+
+    if (state.showSurface) {
+      surface.rebuild({
+        resA: state.resA,
+        resB: state.resB,
+        opacity: state.surfaceOpacity,
+        wireframe: state.wireframe,
+      });
+      surface.setVisible(true);
+    }
   }
 }, 'autoGenerateLoop').name('Generate Random Loop');
 
 fLoop.add({
   clearLoop: () => {
-    // reset trail when clearing the loop
     lift.clearTrail();
+    surface.useLoop(null);
+    surface.setVisible(false);
+
     loops.clearLoopGraphics();
     drawingCtrl.setValue(true);
     pair.useLoop(null);
@@ -120,6 +162,40 @@ fAnim.add(state, 'speedA', 0.01, 1.0, 0.01).name('Speed a (cycles/s)').onChange(
 fAnim.add(state, 'speedB', 0.01, 1.0, 0.01).name('Speed b (cycles/s)').onChange(() => lift.setSpeeds(state.speedA, state.speedB));
 fAnim.add({ clearTrail: () => lift.clearTrail() }, 'clearTrail').name('Clear Trail');
 fAnim.open();
+
+// 4) Surface
+const fSurf = gui.addFolder('4) Surface');
+fSurf.add(state, 'showSurface').name('Show Surface').onChange(v => {
+  if (!loops.getCurve()) { surface.setVisible(false); return; }
+  if (v) {
+    surface.rebuild({
+      resA: state.resA,
+      resB: state.resB,
+      opacity: state.surfaceOpacity,
+      wireframe: state.wireframe,
+    });
+    surface.setVisible(true);
+  } else {
+    surface.setVisible(false);
+  }
+});
+fSurf.add(state, 'resA', 20, 400, 1).name('Resolution A').onChange(() => {
+  if (state.showSurface && loops.getCurve())
+    surface.rebuild({ resA: state.resA, resB: state.resB, opacity: state.surfaceOpacity, wireframe: state.wireframe });
+});
+fSurf.add(state, 'resB', 20, 400, 1).name('Resolution B').onChange(() => {
+  if (state.showSurface && loops.getCurve())
+    surface.rebuild({ resA: state.resA, resB: state.resB, opacity: state.surfaceOpacity, wireframe: state.wireframe });
+});
+fSurf.add(state, 'surfaceOpacity', 0.05, 1.0, 0.01).name('Opacity').onChange(() => {
+  if (state.showSurface && loops.getCurve())
+    surface.rebuild({ resA: state.resA, resB: state.resB, opacity: state.surfaceOpacity, wireframe: state.wireframe });
+});
+fSurf.add(state, 'wireframe').name('Wireframe').onChange(() => {
+  if (state.showSurface && loops.getCurve())
+    surface.rebuild({ resA: state.resA, resB: state.resB, opacity: state.surfaceOpacity, wireframe: state.wireframe });
+});
+fSurf.open();
 
 // ---------- Resize & Animate ----------
 addEventListener('resize', () => {

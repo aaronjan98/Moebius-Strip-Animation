@@ -9,11 +9,17 @@ const state = {
 
   // Step 4A (animation + lifted point + trail)
   playing: false,
-  speedA: 0.18,   // cycles/sec for 'a'
-  speedB: 0.23,   // cycles/sec for 'b' (use different vals for rich coverage)
-  trailMax: 4000, // max samples in trail buffer
-  trailMinStep: 0.01, // min world distance between samples
+  speedA: 0.18,     // cycles/sec for 'a'
+  speedB: 0.23,     // cycles/sec for 'b'
+  trailMax: 4000,
+  trailMinStep: 0.01,
+
+  // Step 4B (transparent surface)
+  showSurface: false,
+  resA: 160,        // samples along a in [0,1)
+  resB: 160,        // samples along b in [0,1)
+  surfaceOpacity: 0.35,
+  wireframe: false,
 };
 
 export default state;
-
