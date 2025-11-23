@@ -48,19 +48,45 @@ loops.enableDrawingMode(state.drawingMode);
 
 // ----- GUI -----
 const gui = new GUI({ title: 'Controls' });
+
 const fLoop = gui.addFolder('1) Loop');
-fLoop.add(state, 'drawingMode').name('Drawing Mode').onChange(v => loops.enableDrawingMode(v));
-fLoop.add({ closeAndSmooth: () => loops.buildSmoothClosedCurve() }, 'closeAndSmooth').name('Close & Smooth');
-fLoop.add({ autoGenerateLoop: () => {
-  loops.enableDrawingMode(false);
-  state.drawingMode = false;
-  loops.autoGenerateLoop();
-}}, 'autoGenerateLoop').name('Generate Random Loop');
-fLoop.add({ clearLoop: () => {
-  loops.clearLoopGraphics();
-  state.drawingMode = true;
-  loops.enableDrawingMode(true);
-}}, 'clearLoop').name('Clear Loop');
+
+// keep a handle so we can toggle it programmatically
+const drawingCtrl = fLoop.add(state, 'drawingMode')
+  .name('Drawing Mode')
+  .onChange(v => loops.enableDrawingMode(v));
+
+fLoop.add(
+  { closeAndSmooth: () => {
+      // build the smooth loop
+      loops.buildSmoothClosedCurve();
+      // turn drawing mode OFF (updates checkbox + disables click handler)
+      drawingCtrl.setValue(false);
+    }
+  },
+  'closeAndSmooth'
+).name('Close & Smooth');
+
+fLoop.add(
+  { autoGenerateLoop: () => {
+      // ensure drawing mode is OFF, then generate
+      drawingCtrl.setValue(false);
+      loops.autoGenerateLoop();
+    }
+  },
+  'autoGenerateLoop'
+).name('Generate Random Loop');
+
+fLoop.add(
+  { clearLoop: () => {
+      // clear visuals and turn drawing mode back ON
+      loops.clearLoopGraphics();
+      drawingCtrl.setValue(true);
+    }
+  },
+  'clearLoop'
+).name('Clear Loop');
+
 fLoop.open();
 
 // ----- resize / render loop -----
