@@ -7,8 +7,11 @@ export class LiftManager {
     this.getCurve = getCurve; // () => curve or null
     this.getAB = getAB;       // () => ({ a, b })
     this.setAB = setAB;       // (a, b) => void
-    this.trailMax = trailMax;
+
+    // trail config
     this.trailMinStep = trailMinStep;
+    this.trailCapacity = Math.max(1000, trailMax); // start capacity
+    this.trailHardCap = 60000; // safety cap; raise if you want "bigger" trails
 
     // lifted midpoint marker (yellow)
     this.marker = new THREE.Mesh(
@@ -18,7 +21,7 @@ export class LiftManager {
     this.marker.visible = false;
     scene.add(this.marker);
 
-    // optional “stem” line from ground midpoint up to lifted point
+    // optional stem (ground midpoint -> lifted point)
     this.stem = new THREE.Line(
       new THREE.BufferGeometry(),
       new THREE.LineBasicMaterial({ color: 0xf1c40f, transparent: true, opacity: 0.6 })
@@ -26,9 +29,9 @@ export class LiftManager {
     this.stem.visible = false;
     scene.add(this.stem);
 
-    // trail (polyline)
+    // trail (polyline) — now auto-growing
     this.trailGeom = new THREE.BufferGeometry();
-    this.trailPositions = new Float32Array(this.trailMax * 3);
+    this.trailPositions = new Float32Array(this.trailCapacity * 3);
     this.trailCount = 0;
     this.trail = new THREE.Line(
       this.trailGeom,
@@ -36,6 +39,7 @@ export class LiftManager {
     );
     this.trail.visible = false;
     scene.add(this.trail);
+    this._resetTrailAttribute();
 
     // animation state
     this.playing = false;
@@ -44,14 +48,13 @@ export class LiftManager {
     this.lastPos = null;
   }
 
+  // ---------- public controls ----------
   setPlaying(v) {
     this.playing = v;
     const hasCurve = !!this.getCurve();
     this.marker.visible = hasCurve;
-    // stem shown only while playing; change to `hasCurve` if you want it visible while paused too
-    this.stem.visible = hasCurve && v;
-    // keep trail visible when paused; hide only if no curve or no samples
-    this.trail.visible = hasCurve && (this.trailCount > 0);
+    this.stem.visible = hasCurve && v;               // stem during play
+    this.trail.visible = hasCurve && (this.trailCount > 0); // keep trail visible when paused
     if (!v) this.lastPos = null;
   }
 
@@ -62,33 +65,46 @@ export class LiftManager {
 
   clearTrail() {
     this.trailCount = 0;
-    this.trailGeom.setDrawRange(0, 0);
-    this.trailGeom.setAttribute('position', new THREE.BufferAttribute(this.trailPositions, 3));
+    this._resetTrailAttribute();
     this.trail.visible = this.playing && !!this.getCurve();
     this.lastPos = null;
   }
 
-  // helper: wrap to [0,1)
+  // ---------- internal helpers ----------
+  _resetTrailAttribute() {
+    this.trailGeom.setAttribute(
+      'position',
+      new THREE.BufferAttribute(this.trailPositions, 3)
+    );
+    this.trailGeom.setDrawRange(0, 0);
+  }
+
+  _ensureCapacity(nextCount) {
+    if (nextCount <= this.trailCapacity) return;
+    // grow (double) but clamp to hard cap
+    const newCap = Math.min(this.trailCapacity * 2, this.trailHardCap);
+    if (newCap === this.trailCapacity) return; // already at cap
+    const newArr = new Float32Array(newCap * 3);
+    newArr.set(this.trailPositions);
+    this.trailPositions = newArr;
+    this.trailCapacity = newCap;
+    this._resetTrailAttribute();
+  }
+
   _wrap01(t) {
     return ((t % 1) + 1) % 1;
   }
 
-  // compute lifted position from current a,b
   _liftedFromAB(curve, a, b) {
     const P1 = curve.getPointAt(a).clone(); P1.y = 0;
     const P2 = curve.getPointAt(b).clone(); P2.y = 0;
-
-    // ground midpoint
-    const M = new THREE.Vector3().addVectors(P1, P2).multiplyScalar(0.5);
-    // chord length on ground
-    const h = P2.distanceTo(P1);
-    // lifted
-    const L = M.clone().add(new THREE.Vector3(0, h, 0));
-
-    return { P1, P2, M, L, h };
+    const M  = new THREE.Vector3().addVectors(P1, P2).multiplyScalar(0.5);
+    const h  = P2.distanceTo(P1);
+    const L  = M.clone().add(new THREE.Vector3(0, h, 0));
+    return { M, L };
   }
 
-  // update per frame
+  // ---------- frame update ----------
   update(dt) {
     const curve = this.getCurve();
     if (!curve) {
@@ -103,17 +119,17 @@ export class LiftManager {
     if (this.playing) {
       a = this._wrap01(a + this.speedA * dt);
       b = this._wrap01(b + this.speedB * dt);
-      this.setAB(a, b); // drive the visible red/blue points + chord + ground midpoint
+      this.setAB(a, b); // sync red/blue + chord + ground midpoint
     }
 
-    // compute lifted geometry
+    // compute lifted position
     const { M, L } = this._liftedFromAB(curve, a, b);
 
-    // place marker
+    // marker
     this.marker.position.copy(L);
     this.marker.visible = true;
 
-    // update stem (line from M to L)
+    // stem: M -> L
     const stemPos = new Float32Array([M.x, M.y, M.z, L.x, L.y, L.z]);
     const stemGeo = new THREE.BufferGeometry();
     stemGeo.setAttribute('position', new THREE.BufferAttribute(stemPos, 3));
@@ -121,22 +137,29 @@ export class LiftManager {
     this.stem.geometry = stemGeo;
     this.stem.visible = this.playing;
 
-    // trail update
+    // trail
     if (this.playing) {
       if (!this.lastPos || this.lastPos.distanceTo(L) > this.trailMinStep) {
-        if (this.trailCount >= this.trailMax) {
-          // shift left by one vertex (O(n), fine at a few thousand)
-          this.trailPositions.copyWithin(0, 3, this.trailMax * 3);
-          this.trailCount = this.trailMax - 1;
+        // ensure capacity before appending
+        this._ensureCapacity(this.trailCount + 1);
+
+        // if we hit hard cap, drop oldest (FIFO) to avoid growth
+        if (this.trailCount >= this.trailCapacity) {
+          this.trailPositions.copyWithin(0, 3, this.trailCapacity * 3);
+          this.trailCount = this.trailCapacity - 1;
         }
-        this.trailPositions[this.trailCount*3 + 0] = L.x;
-        this.trailPositions[this.trailCount*3 + 1] = L.y;
-        this.trailPositions[this.trailCount*3 + 2] = L.z;
+
+        // append new point
+        this.trailPositions[this.trailCount * 3 + 0] = L.x;
+        this.trailPositions[this.trailCount * 3 + 1] = L.y;
+        this.trailPositions[this.trailCount * 3 + 2] = L.z;
         this.trailCount++;
 
-        this.trailGeom.setAttribute('position', new THREE.BufferAttribute(this.trailPositions, 3));
-        this.trailGeom.setDrawRange(0, this.trailCount);
+        // update GPU buffer
+        this.trailGeom.attributes.position.array = this.trailPositions;
         this.trailGeom.attributes.position.needsUpdate = true;
+        this.trailGeom.setDrawRange(0, this.trailCount);
+
         this.trail.visible = true;
         this.lastPos = L.clone();
       }
