@@ -1,16 +1,17 @@
 {
   "name": "mobius-pairviz",
   "version": "1.0.0",
-  "description": "",
+  "description": "Moebius strip parameterization visualized",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
-  "author": "",
+  "author": "aaronjanovitch@gmail.com",
   "license": "ISC",
   "dependencies": {
+    "lil-gui": "^0.21.0",
     "three": "^0.181.2"
   },
   "devDependencies": {
