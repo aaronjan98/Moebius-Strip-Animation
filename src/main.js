@@ -1,4 +1,4 @@
-// src/main.js — known-good for Step 4A
+// src/main.js — with trail persistence + reset on loop changes
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import GUI from 'lil-gui';
@@ -51,7 +51,6 @@ loops.enableDrawingMode(state.drawingMode);
 
 const pair = new PairManager({ scene });
 
-// Lifted midpoint + trail + animation
 const lift = new LiftManager({
   scene,
   getCurve: () => loops.getCurve(),
@@ -73,26 +72,38 @@ const drawingCtrl = fLoop.add(state, 'drawingMode')
   .name('Drawing Mode')
   .onChange(v => loops.enableDrawingMode(v));
 
-fLoop.add({ closeAndSmooth: () => {
-  loops.buildSmoothClosedCurve();
-  drawingCtrl.setValue(false);
-  pair.useLoop(loops.getCurve());
-  lift.setPlaying(state.playing); // show/hide lifted marker based on Play
-}}, 'closeAndSmooth').name('Close & Smooth');
+fLoop.add({
+  closeAndSmooth: () => {
+    // reset old trail when building a fresh loop
+    lift.clearTrail();
+    loops.buildSmoothClosedCurve();
+    drawingCtrl.setValue(false);
+    pair.useLoop(loops.getCurve());
+    lift.setPlaying(state.playing); // show/hide lifted marker based on Play
+  }
+}, 'closeAndSmooth').name('Close & Smooth');
 
-fLoop.add({ autoGenerateLoop: () => {
-  drawingCtrl.setValue(false);
-  loops.autoGenerateLoop();
-  pair.useLoop(loops.getCurve());
-  lift.setPlaying(state.playing);
-}}, 'autoGenerateLoop').name('Generate Random Loop');
+fLoop.add({
+  autoGenerateLoop: () => {
+    drawingCtrl.setValue(false);
+    // reset trail when generating a new loop
+    lift.clearTrail();
+    loops.autoGenerateLoop();
+    pair.useLoop(loops.getCurve());
+    lift.setPlaying(state.playing);
+  }
+}, 'autoGenerateLoop').name('Generate Random Loop');
 
-fLoop.add({ clearLoop: () => {
-  loops.clearLoopGraphics();
-  drawingCtrl.setValue(true);
-  pair.useLoop(null);
-  lift.setPlaying(false);
-}}, 'clearLoop').name('Clear Loop');
+fLoop.add({
+  clearLoop: () => {
+    // reset trail when clearing the loop
+    lift.clearTrail();
+    loops.clearLoopGraphics();
+    drawingCtrl.setValue(true);
+    pair.useLoop(null);
+    lift.setPlaying(false);
+  }
+}, 'clearLoop').name('Clear Loop');
 
 fLoop.open();
 
@@ -117,7 +128,6 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
-// animate
 let last = performance.now();
 function animate() {
   requestAnimationFrame(animate);

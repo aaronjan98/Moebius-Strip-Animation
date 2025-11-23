@@ -46,17 +46,20 @@ export class LiftManager {
 
   setPlaying(v) {
     this.playing = v;
-    const curve = this.getCurve();
-    const on = !!curve;
-    this.marker.visible = on;
-    this.stem.visible = on && v;      // stem shown during play
-    this.trail.visible = on && v;     // trail shown during play
+    const hasCurve = !!this.getCurve();
+    this.marker.visible = hasCurve;
+    // stem shown only while playing; change to `hasCurve` if you want it visible while paused too
+    this.stem.visible = hasCurve && v;
+    // keep trail visible when paused; hide only if no curve or no samples
+    this.trail.visible = hasCurve && (this.trailCount > 0);
     if (!v) this.lastPos = null;
   }
+
   setSpeeds(speedA, speedB) {
     this.speedA = speedA;
     this.speedB = speedB;
   }
+
   clearTrail() {
     this.trailCount = 0;
     this.trailGeom.setDrawRange(0, 0);
@@ -88,7 +91,12 @@ export class LiftManager {
   // update per frame
   update(dt) {
     const curve = this.getCurve();
-    if (!curve) { this.marker.visible = false; this.trail.visible = false; this.stem.visible = false; return; }
+    if (!curve) {
+      this.marker.visible = false;
+      this.trail.visible = false;
+      this.stem.visible = false;
+      return;
+    }
 
     // advance a,b if playing
     let { a, b } = this.getAB();
@@ -99,7 +107,7 @@ export class LiftManager {
     }
 
     // compute lifted geometry
-    const { M, L, h } = this._liftedFromAB(curve, a, b);
+    const { M, L } = this._liftedFromAB(curve, a, b);
 
     // place marker
     this.marker.position.copy(L);
@@ -111,7 +119,7 @@ export class LiftManager {
     stemGeo.setAttribute('position', new THREE.BufferAttribute(stemPos, 3));
     this.stem.geometry.dispose();
     this.stem.geometry = stemGeo;
-    this.stem.visible = this.playing; // visible during play
+    this.stem.visible = this.playing;
 
     // trail update
     if (this.playing) {
@@ -132,6 +140,10 @@ export class LiftManager {
         this.trail.visible = true;
         this.lastPos = L.clone();
       }
+    } else {
+      // paused: keep any existing trail visible
+      this.trail.visible = (this.trailCount > 0);
+      this.lastPos = L.clone();
     }
   }
 }
