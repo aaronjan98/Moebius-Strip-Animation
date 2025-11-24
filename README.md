@@ -1,5 +1,7 @@
 # Animate Parameterization of the Möbius Strip
 
+- Try out the animation [here](https://aaronjan98.github.io/Moebius-Strip-Animation/)
+
 ## Structure of the Code
 
 I've split up the code into small ES modules:
