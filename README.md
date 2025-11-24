@@ -12,4 +12,7 @@ mobius-pairviz/
     main.js        // scene, camera, controls, lights, GUI shells
     loop.js        // everything about loops: clicks, smoothing, random generation
     state.js       // shared app state (for later steps too)
+    pair.js        // points on the loop
+    lift.js        // animation + lifted point + trail
+    band.js        // transparent Möbius surface mesh
 ```
